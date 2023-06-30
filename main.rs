@@ -1,14 +1,111 @@
-use std::ops::DerefMut;
-use std::io::Write;
-fn main() {
+// // use std::io::{self, prelude::*, BufWriter};
+// // fn main() {
+// //     let mut buf = String::new();
+// //     io::stdin().read_to_string(&mut buf).unwrap();
+// //     let mut it = buf.split_ascii_whitespace();
+// //     let mut read = || it.next().unwrap().parse::<usize>().unwrap();
+// //     let mut start = (0, 0);
+// //     let [n, m] = [0; 2].map(|_| read());
+// //     let mut array = vec![vec!{0; m}; n];
+// //     for y in 0..n {
+// //         for x in 0..m {
+// //             let z = read();
+// //             array[y][x] = z;
+// //             if z == 2 { start = (y, x) }
+// //         }
+// //     }
+// //     let (ys, xs) = start;
+// //     use std::collections::VecDeque;
+// //     let mut visited = vec![vec![false; m]; n];
+// //     visited[ys][xs] = true;
+// //     let mut deq = VecDeque::new();
+// //     deq.push_back(start);
+// //     let mut count = 0;
+// //     let mut level = 1;
+// //     let mut next = 1;
+// //     let mut res = vec![vec![-1; m]; n];
+// //     while let Some(node) = deq.pop_front() {
+// //         let (y, x) = node;
+// //         res[y][x] = count;
+// //         for dy in [!0, 0, 1] {
+// //             for dx in [!0, 0, 1] {
+// //                 let yn = usize::saturating_add(y, dy);
+// //                 let xn = usize::saturating_add(x, dx);
+// //                 if let Some(1) = array.get(yn).and_then(|row| row.get(xn)) {
+// //                     deq.push_back((yn, xn));
+// //                 }
+// //             }
+// //         }
+// //         level -= 1;
+// //         if level == 0 {
+// //             count += 1;
+// //             level = next;
+// //             next = 0;
+// //         }
+// //     }
+// //     let mut o = BufWriter::new(io::stdout());
+// //     for y in 0..n {
+// //         for x in 0..m {
+// //             write!(o, "{}", res[y][x]).unwrap();
+// //         }
+// //         writeln!(o).unwrap();
+// //     }
+// // }
+// use std::io::{self, Read, Write, BufWriter};
+// fn main() {
+//     let mut buf = String::new();
+//     io::stdin().read_to_string(&mut buf).unwrap();
+//     let mut it = buf.split_ascii_whitespace();
+//     // let mut next = || it.next().unwrap();
+//     let mut read = || it.next().unwrap().parse::<usize>().unwrap();
+//     let [n, m, r] = [0; 3].map(|_| read());
+//     let mut nodes = vec![0; n];
+//     for i in 0..n {
+//         nodes[i] = read();
+//     }
+//     let mut graph = vec![vec![]; n];
+//     for _ in 0..m {
+//         let [a, b, l] = [0; 3].map(|_| )
+//     }
+//     let ans = 0;
+//     let mut o = BufWriter::new(io::stdout());
+//     writeln!(o, "{ans}").unwrap();
+// }
+// trait Node: Clone + Copy {
+//     type Output;
+//     fn terminate(&self) -> bool;
+//     fn success(&self) -> Self::Output;
+// }
+// type Coord = (usize, usize);
+// fn dfs<N: Node<Output=bool>>(node: Coord, graph: &Vec<Vec<N>>, visited: &mut Vec<Vec<bool>>) -> usize {
+//     let (y, x) = node;
+//     visited[y][x] = true;
+//     let mut res = 0;
+//     for (dy, dx) in [(!0, 0), (0, !0), (0, 1), (1, 0)] {
+//         let yn = usize::wrapping_add(y, dy);
+//         let xn = usize::wrapping_add(x, dx);
+//         if let Some(&data) = graph.get(yn).and_then(|row| row.get(xn)) {
+//             if data.terminate() { continue }
+//             if visited[yn][xn] { continue }
+//             res += dfs((yn, xn), graph, visited) + data.success() as usize;
+//         }
+//     }
+//     res
+// }
+#![no_main]    
+use std::io::{self, BufReader, StdinLock, BufWriter, StdoutLock, Write};
+use proconio::{OnceSource, LineSource};
+static mut ONCE: Option<OnceSource<BufReader<StdinLock>>> = None;
+static mut LINE: Option<LineSource<BufReader<StdinLock>>> = None;
+static mut WRITER: Option<BufWriter<StdoutLock>> = None;
+
+#[no_mangle]
+unsafe fn main() {
+    ONCE = Some(OnceSource::new(BufReader::new(io::stdin().lock())));
+    LINE = Some(LineSource::new(BufReader::new(io::stdin().lock())));
+    WRITER = Some(BufWriter::new(io::stdout().lock()));
     solve();
-    let mut locked_stdout = proconio::STDOUT.get_or_init(|| {
-        std::sync::Mutex::new(
-            std::io::BufWriter::new(std::io::stdout())
-        )
-    }).lock()
-    .expect("failed to lock stdout.");
-    locked_stdout.deref_mut().flush().unwrap();
+    WRITER.as_mut().unwrap_unchecked().flush().unwrap();
 }
 
 #[allow(dead_code)]
@@ -22,45 +119,23 @@ mod proconio {
     // - `input!` doesn't match to `AutoSource` but to `OnceSource`.
     // - some modules are omitted, also module structure changed.
 
-    use std::io::{BufRead, BufReader, Stdin, BufWriter, Stdout};
-    use std::sync::OnceLock;
-    use std::sync::Mutex;
+    use std::io::BufRead;
     
     pub use source::{Source, OnceSource, LineSource};
     pub use source::Readable as __Readable;
-    
-    pub static STDOUT: OnceLock<Mutex<BufWriter<Stdout>>> = OnceLock::new();
 
     #[macro_export]
     macro_rules! print {
         ($($tt:tt)*) => {
-            use std::io::Write;
-            let mut locked_stdout = $crate::proconio::STDOUT.get_or_init(|| {
-                std::sync::Mutex::new(
-                    std::io::BufWriter::new(std::io::stdout())
-                )
-            }).lock()
-            .expect("failed to lock stdout.");
-            write!(locked_stdout, $($tt)*).unwrap();
-            drop(locked_stdout);
+            write!(unsafe { WRITER.as_mut().unwrap_unchecked() }, $($tt)*).unwrap();
         };
     }
     #[macro_export]
     macro_rules! println {
         ($($tt:tt)*) => {
-            use std::io::Write;
-            let mut locked_stdout = $crate::proconio::STDOUT.get_or_init(|| {
-                std::sync::Mutex::new(
-                    std::io::BufWriter::new(std::io::stdout())
-                )
-            }).lock()
-            .expect("failed to lock stdout.");
-            writeln!(locked_stdout, $($tt)*).unwrap();
-            drop(locked_stdout);
+            writeln!(unsafe { WRITER.as_mut().unwrap_unchecked() }, $($tt)*).unwrap();
         };
     }
-
-    pub static STDIN_SOURCE: OnceLock<Mutex<StdinSource<BufReader<Stdin>>>> = OnceLock::new();
 
     #[macro_export]
     macro_rules! input {
@@ -115,16 +190,7 @@ mod proconio {
             }
         };
         ($($rest:tt)*) => {
-            let mut locked_stdin = $crate::proconio::STDIN_SOURCE
-                .get_or_init(|| {
-                    std::sync::Mutex::new(
-                        $crate::proconio::StdinSource::Once(
-                            $crate::proconio::OnceSource::new(std::io::BufReader::new(std::io::stdin()))
-                        )
-                    )
-                })
-                .lock()
-                .expect("failed to lock stdin.");
+            let locked_stdin = ONCE.as_mut().unwrap_unchecked();
             $crate::input! {
                 @from [&mut *locked_stdin]
                 @rest $($rest)*
@@ -136,16 +202,7 @@ mod proconio {
     #[macro_export]
     macro_rules! inputln {
         ($($rest:tt)*) => {
-            let mut locked_stdin = $crate::proconio::STDIN_SOURCE
-                .get_or_init(|| {
-                    std::sync::Mutex::new(
-                        $crate::proconio::StdinSource::Line(
-                            $crate::proconio::LineSource::new(std::io::BufReader::new(std::io::stdin()))
-                        )
-                    )
-                })
-                .lock()
-                .expect("failed to lock stdin.");
+            let locked_stdin = LINE.as_mut().unwrap_unchecked();
             $crate::input! {
                 from &mut *locked_stdin,
                 $($rest)*
@@ -375,6 +432,6 @@ mod proconio {
     }
 }
 
-fn solve() {
-    println!("Hello World!");
+unsafe fn solve() {
+    
 }
