@@ -1,4 +1,4 @@
-#![no_main]    
+#![no_main]
 use std::io::{self, BufReader, StdinLock, BufWriter, StdoutLock, Write};
 use proconio::{OnceSource, LineSource};
 static mut ONCE: Option<OnceSource<BufReader<StdinLock>>> = None;
@@ -244,7 +244,18 @@ mod proconio {
                 }
             }
         }
-    
+        // Usize1: 1-indexed usize.  Output of reading has type usize.
+        pub enum Usize1 {}
+        impl Readable for Usize1 {
+            type Output = usize;
+            fn read<R: BufRead, S: Source<R>>(source: &mut S) -> usize {
+                // panic if the subtraction overflows
+                usize::read(source)
+                    .checked_sub(1)
+                    .expect("attempted to read the value 0 as a Usize1")
+            }
+        }
+
         struct Tokens {
             tokens: Peekable<SplitAsciiWhitespace<'static>>,
         }
@@ -283,9 +294,15 @@ mod proconio {
         impl<R: BufRead> OnceSource<R> {
             pub fn new(mut source: R) -> OnceSource<R> {
                 let mut context = String::new();
+                #[cfg(target_os = "windows")]
+                let _ = source
+                    .read_to_string(&mut context);
+
+                #[cfg(not(target_os = "windows"))]
                 source
                     .read_to_string(&mut context)
                     .expect("failed to read from source.");
+                
                 Self {
                     tokens: context.into(),
                     _read: PhantomData,
@@ -336,8 +353,4 @@ mod proconio {
             }
         }
     }
-}
-
-unsafe fn solve() {
-    
 }
