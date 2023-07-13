@@ -33,13 +33,13 @@ mod proconio {
     #[macro_export]
     macro_rules! print {
         ($($tt:tt)*) => {
-            write!(unsafe { WRITER.as_mut().unwrap_unchecked() }, $($tt)*).unwrap();
+            write!(unsafe { WRITER.as_mut().unwrap_unchecked() }, $($tt)*).unwrap()
         };
     }
     #[macro_export]
     macro_rules! println {
         ($($tt:tt)*) => {
-            writeln!(unsafe { WRITER.as_mut().unwrap_unchecked() }, $($tt)*).unwrap();
+            writeln!(unsafe { WRITER.as_mut().unwrap_unchecked() }, $($tt)*).unwrap()
         };
     }
 
@@ -244,17 +244,6 @@ mod proconio {
                 }
             }
         }
-        // Usize1: 1-indexed usize.  Output of reading has type usize.
-        pub enum Usize1 {}
-        impl Readable for Usize1 {
-            type Output = usize;
-            fn read<R: BufRead, S: Source<R>>(source: &mut S) -> usize {
-                // panic if the subtraction overflows
-                usize::read(source)
-                    .checked_sub(1)
-                    .expect("attempted to read the value 0 as a Usize1")
-            }
-        }
 
         struct Tokens {
             tokens: Peekable<SplitAsciiWhitespace<'static>>,
@@ -333,9 +322,15 @@ mod proconio {
             fn prepare(&mut self) {
                 while self.tokens.is_empty() {
                     let mut line = String::new();
+                    #[cfg(target_os = "windows")]
+                    let num_bytes = self.reader
+                        .read_line(&mut line).unwrap_or(0);
+    
+                    #[cfg(not(target_os = "windows"))]
                     let num_bytes = self.reader
                         .read_line(&mut line)
                         .expect("failed to read newline(the 0xA byte).");
+
                     // reached EOF
                     if num_bytes == 0 { return }
                     self.tokens = line.into();
@@ -350,6 +345,21 @@ mod proconio {
             fn is_empty(&mut self) -> bool {
                 self.prepare();
                 self.tokens.is_empty()
+            }
+        }
+    }
+    pub mod marker {
+        use std::io::BufRead;
+        use super::source::{Source, Readable};
+        // Usize1: 1-indexed usize.  Output of reading has type usize.
+        pub enum Usize1 {}
+        impl Readable for Usize1 {
+            type Output = usize;
+            fn read<R: BufRead, S: Source<R>>(source: &mut S) -> usize {
+                // panic if the subtraction overflows
+                usize::read(source)
+                    .checked_sub(1)
+                    .expect("attempted to read the value 0 as a Usize1")
             }
         }
     }
