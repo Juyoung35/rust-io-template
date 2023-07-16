@@ -29,6 +29,7 @@ mod proconio {
     
     pub use source::{Source, OnceSource, LineSource};
     pub use source::Readable as __Readable;
+    pub use source::CheckedReadable as __CheckedReadable;
 
     #[macro_export]
     macro_rules! print {
@@ -63,28 +64,40 @@ mod proconio {
                 @rest $($rest)*
             }
         };
-    
+
+        // parse variable pattern with while statement condition
+        (@from [$source:expr] @mut [$($mut:tt)?] @rest $var:tt while $condition:expr => $($rest:tt)*) => {
+            $crate::input! {
+                @from [$source]
+                @mut [$($mut)*]
+                @var $var
+                @condition [$condition]
+                @kind []
+                @rest $($rest)*
+            }
+        };
         // parse variable pattern
         (@from [$source:expr] @mut [$($mut:tt)?] @rest $var:tt: $($rest:tt)*) => {
             $crate::input! {
                 @from [$source]
                 @mut [$($mut)*]
                 @var $var
+                @condition []
                 @kind []
                 @rest $($rest)*
             }
         };
 
         // parse kind (type)
-        (@from [$source:expr] @mut [$($mut:tt)?] @var $var:tt @kind [$($kind:tt)*] @rest) => {
-            let $($mut)* $var = $crate::read_value!(@source [$source] @kind [$($kind)*]);
+        (@from [$source:expr] @mut [$($mut:tt)?] @var $var:tt @condition [$($condition:expr)?] @kind [$($kind:tt)*] @rest) => {
+            let $($mut)* $var = $crate::read_value!(@source [$source] @var $var @condition [$($condition)*] @kind [$($kind)*]);
         };
-        (@from [$source:expr] @mut [$($mut:tt)?] @var $var:tt @kind [$($kind:tt)*] @rest, $($rest:tt)*) => {
-            $crate::input!(@from [$source] @mut [$($mut)*] @var $var @kind [$($kind)*] @rest);
+        (@from [$source:expr] @mut [$($mut:tt)?] @var $var:tt @condition [$($condition:expr)?] @kind [$($kind:tt)*] @rest, $($rest:tt)*) => {
+            $crate::input!(@from [$source] @mut [$($mut)*] @var $var @condition [$($condition)*] @kind [$($kind)*] @rest);
             $crate::input!(@from [$source] @rest $($rest)*);
         };
-        (@from [$source:expr] @mut [$($mut:tt)?] @var $var:tt @kind [$($kind:tt)*] @rest $tt:tt $($rest:tt)*) => {
-            $crate::input!(@from [$source] @mut [$($mut)*] @var $var @kind [$($kind)* $tt] @rest $($rest)*);
+        (@from [$source:expr] @mut [$($mut:tt)?] @var $var:tt @condition [$($condition:expr)?] @kind [$($kind:tt)*] @rest $tt:tt $($rest:tt)*) => {
+            $crate::input!(@from [$source] @mut [$($mut)*] @var $var @condition [$($condition)*] @kind [$($kind)* $tt] @rest $($rest)*);
         };
 
         (from $source:expr, $($rest:tt)*) => {
@@ -119,7 +132,19 @@ mod proconio {
     
     #[macro_export]
     macro_rules! read_value {
+        // conditionally fills vectors of undefined length
+        (@source [$source:expr] @var $var:tt @condition [$condition:expr] @kind [[$kind:tt]]) => {{
+            let mut res = vec![];
+            while let Some($var) = <$kind as $crate::proconio::__CheckedReadable>::checked_read($source) {
+                if !$condition { break }
+                res.push($var);
+            }
+            res
+        }};
         // array and variable length array
+        (@source [$source:expr] @var $var:tt @condition [] @kind [[$($kind:tt)*]]) => {
+            $crate::read_value!(@array @source [$source] @kind [] @rest $($kind)*)
+        };
         (@source [$source:expr] @kind [[$($kind:tt)*]]) => {
             $crate::read_value!(@array @source [$source] @kind [] @rest $($kind)*)
         };
@@ -141,6 +166,9 @@ mod proconio {
         }};
     
         // tuple
+        (@source [$source:expr] @var $var:tt @condition [$($condition:expr)?] @kind [($($kinds:tt)*)]) => {
+            $crate::read_value!(@tuple @source [$source] @kinds [] @current [] @rest $($kinds)*)
+        };
         (@source [$source:expr] @kind [($($kinds:tt)*)]) => {
             $crate::read_value!(@tuple @source [$source] @kinds [] @current [] @rest $($kinds)*)
         };
@@ -159,12 +187,20 @@ mod proconio {
             $crate::read_value!(@tuple @source [$source] @kinds [$($kinds)*] @current [$($curr)* $tt] @rest $($rest)*)
         };
     
+        // undesired while statement pattern
+        (@source [$source:expr] @var $var:tt @condition [$condition:expr] @kind [$kind:ty]) => {
+            compile_error("giving while state pattern to anything other than a vector is an undesired pattern.")
+        };
+
         // unreachable
-        (@source [$source:expr] @kind []) => {
+        (@source [$source:expr] @var $var:tt @condition [$($condition:expr)?] @kind []) => {
             compile_error!("reached unreachable statement while parsing macro input.");
         };
     
         // normal other
+        (@source [$source:expr] @var $var:tt @condition [$($condition:expr)?] @kind [$kind:ty]) => {
+            $crate::read_value!(@source [$source] @kind [$kind])
+        };
         (@source [$source:expr] @kind [$kind:ty]) => {
             <$kind as $crate::proconio::__Readable>::read($source)
         }
@@ -244,6 +280,31 @@ mod proconio {
                 }
             }
         }
+        pub trait CheckedReadable {
+            type Output;
+            fn checked_read<R: BufRead, S: Source<R>>(source: &mut S) -> Option<Self::Output>;
+        }
+        // implmentations of CheckedReadable for any `FromStr` types including primitives.
+        impl<T: FromStr> CheckedReadable for T
+        where T::Err: Debug,
+        {
+            type Output = T;
+            fn checked_read<R: BufRead, S: Source<R>>(source: &mut S) -> Option<Self::Output> {
+                let token = source.next_token()?;
+                match token.parse() {
+                    Ok(v) => Some(v),
+                    Err(e) => panic!(
+                        concat!(
+                            "failed to parse the input: `{input}`",
+                            "to the value of type `{ty}`: {err:?}."
+                        ),
+                        input = token,
+                        ty = type_name::<T>(),
+                        err = e,
+                    ),
+                }
+            }
+        }
 
         struct Tokens {
             tokens: Peekable<SplitAsciiWhitespace<'static>>,
@@ -273,6 +334,9 @@ mod proconio {
             fn is_empty(&mut self) -> bool {
                 self.tokens.peek().is_none()
             }
+            // fn peek(&mut self) -> Option<&str> {
+            //     self.tokens.peek().copied()
+            // }
         }
     
         // Source reading entire content for the first time.
