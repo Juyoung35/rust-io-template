@@ -1,14 +1,12 @@
 #![no_main]
-use std::io::{self, BufReader, StdinLock, BufWriter, StdoutLock, Write};
-use proconio::{OnceSource, LineSource};
-static mut ONCE: Option<OnceSource<BufReader<StdinLock>>> = None;
-static mut LINE: Option<LineSource<BufReader<StdinLock>>> = None;
+use std::io::{self, BufReader, Stdin, BufWriter, StdoutLock, Write};
+use std::sync::Mutex;
+use proconio::{StdinSource, LineSource};
+static mut STDIN_SOURCE: Option<Mutex<StdinSource<BufReader<Stdin>>>> = None;
 static mut WRITER: Option<BufWriter<StdoutLock>> = None;
 
 #[no_mangle]
 unsafe fn main() {
-    ONCE = Some(OnceSource::new(BufReader::new(io::stdin().lock())));
-    LINE = Some(LineSource::new(BufReader::new(io::stdin().lock())));
     WRITER = Some(BufWriter::new(io::stdout().lock()));
     solve();
     WRITER.as_mut().unwrap_unchecked().flush().unwrap();
@@ -20,11 +18,14 @@ mod proconio {
     // The macro’s user interface is basically the same with tanakh's input macro: https://qiita.com/tanakh/items/0ba42c7ca36cd29d0ac8
 
     // [Changelog by juyoung35]
+    // - now `input!` has new mode: while statement conditional assignment to possibly infinite length of 1-dimensional vector.
+    // - usage: input!(var while var != 0 => [usize])
     // - changed `input_interactive!` into `inputln!`.
-    // - elided some fileds, struct: `AutoSource`
+    // - `inputln` doesn't split ascii whitespace.
+    // - probably you can not use both OnceSource and LineSource at the same time.
+    // - deleted struct: `AutoSource`
     // - `input!` doesn't match to `AutoSource` but to `OnceSource`.
-    // - some modules are omitted, also module structure changed.
-
+    // - `print!` and `println!` macros are have been changed.
     use std::io::BufRead;
     
     pub use source::{Source, OnceSource, LineSource};
@@ -109,7 +110,12 @@ mod proconio {
             }
         };
         ($($rest:tt)*) => {
-            let locked_stdin = ONCE.as_mut().unwrap_unchecked();
+            if STDIN_SOURCE.is_none() {
+                STDIN_SOURCE = Some(Mutex::new(StdinSource::Once(
+                    OnceSource::new(std::io::BufReader::new(io::stdin()))
+                )));
+            }
+            let mut locked_stdin = STDIN_SOURCE.as_mut().unwrap_unchecked().lock().unwrap();
             $crate::input! {
                 @from [&mut *locked_stdin]
                 @rest $($rest)*
@@ -121,7 +127,12 @@ mod proconio {
     #[macro_export]
     macro_rules! inputln {
         ($($rest:tt)*) => {
-            let locked_stdin = LINE.as_mut().unwrap_unchecked();
+            if STDIN_SOURCE.is_none() {
+                STDIN_SOURCE = Some(Mutex::new(StdinSource::Line(
+                    LineSource::new(std::io::BufReader::new(io::stdin()))
+                )));
+            }
+            let mut locked_stdin = STDIN_SOURCE.as_mut().unwrap_unchecked().lock().unwrap();
             $crate::input! {
                 from &mut *locked_stdin,
                 $($rest)*
@@ -206,6 +217,7 @@ mod proconio {
         }
     }
     
+    #[derive(Debug)]
     pub enum StdinSource<R: BufRead> {
         Once(OnceSource<R>),
         Line(LineSource<R>),
@@ -233,7 +245,7 @@ mod proconio {
         use std::fmt::Debug;
         use std::any::type_name;
         use std::iter::Peekable;
-    
+
         // Used for source of `input!` macro.
         pub trait Source<R: BufRead> {
             // Get a whitespace-splitted next token.
@@ -259,27 +271,38 @@ mod proconio {
             type Output;
             fn read<R: BufRead, S: Source<R>>(source: &mut S) -> Self::Output;
         }
-        // implmentations of Readable for any `FromStr` types including primitives.
-        impl<T: FromStr> Readable for T
-        where T::Err: Debug,
-        {
-            type Output = T;
+        impl Readable for String {
+            type Output = Self;
             fn read<R: BufRead, S: Source<R>>(source: &mut S) -> Self::Output {
                 let token = source.next_token_unwrap();
-                match token.parse() {
-                    Ok(v) => v,
-                    Err(e) => panic!(
-                        concat!(
-                            "failed to parse the input: `{input}`",
-                            "to the value of type `{ty}`: {err:?}."
-                        ),
-                        input = token,
-                        ty = type_name::<T>(),
-                        err = e,
-                    ),
-                }
+                token.to_string()
             }
         }
+        // implmentations of Readable for any `FromStr` types including primitives.
+        macro_rules! impl_readable {
+            ($($t:ty) *) => {
+                $(impl Readable for $t {
+                    type Output = Self;
+                    fn read<R: BufRead, S: Source<R>>(source: &mut S) -> Self::Output {
+                        let token = source.next_token_unwrap();
+                        match token.parse() {
+                            Ok(v) => v,
+                            Err(e) => panic!(
+                                concat!(
+                                    "failed to parse the input: `{input}`",
+                                    "to the value of type `{ty}`: {err:?}."
+                                ),
+                                input = token,
+                                ty = type_name::<$t>(),
+                                err = e,
+                            ),
+                        }
+                    }
+                })*
+            };
+        }
+        // impl_readable!(IpAddr SocketAddr bool char f32 f64 i8 i16 i32 i64 i128 isize u8 u16 u32 u64 u128 usize OsString Ipv4Addr Ipv6Addr SocketAddrV4 SocketAddrV6 NonZeroI8 NonZeroI16 NonZeroI32 NonZeroI64 NonZeroI128 NonZeroIsize NonZeroU8 NonZeroU16 NonZeroU32 NonZeroU64 NonZeroU128 NonZeroUsize PathBuf TokenStream);
+        impl_readable!(bool char f32 f64 i8 i16 i32 i64 i128 isize u8 u16 u32 u64 u128 usize);
         pub trait CheckedReadable {
             type Output;
             fn checked_read<R: BufRead, S: Source<R>>(source: &mut S) -> Option<Self::Output>;
@@ -306,6 +329,7 @@ mod proconio {
             }
         }
 
+        #[derive(Debug)]
         struct Tokens {
             tokens: Peekable<SplitAsciiWhitespace<'static>>,
         }
@@ -340,6 +364,7 @@ mod proconio {
         }
     
         // Source reading entire content for the first time.
+        #[derive(Debug)]
         pub struct OnceSource<R: BufRead> {
             tokens: Tokens,
             _read: PhantomData<R>,
@@ -372,43 +397,31 @@ mod proconio {
         }
     
         // Source reading stream line by line.
+        #[derive(Debug)]
         pub struct LineSource<R: BufRead> {
-            tokens: Tokens,
-            reader: R,
+            token: Option<String>,
+            tokens: Peekable<std::io::Lines<R>>,
+            _read: PhantomData<R>,
         }
         impl<R: BufRead> LineSource<R> {
-            pub fn new(reader: R) -> LineSource<R> {
+            // Creates a `LineSource` by specified `BufRead`.
+            pub unsafe fn new(source: R) -> LineSource<R> {
+                let lines = source.lines();
+                let tokens = lines.peekable();
                 Self {
-                    tokens: "".to_string().into(),
-                    reader,
-                }
-            }
-            fn prepare(&mut self) {
-                while self.tokens.is_empty() {
-                    let mut line = String::new();
-                    #[cfg(target_os = "windows")]
-                    let num_bytes = self.reader
-                        .read_line(&mut line).unwrap_or(0);
-    
-                    #[cfg(not(target_os = "windows"))]
-                    let num_bytes = self.reader
-                        .read_line(&mut line)
-                        .expect("failed to read newline(the 0xA byte).");
-
-                    // reached EOF
-                    if num_bytes == 0 { return }
-                    self.tokens = line.into();
+                    token: None,
+                    tokens,
+                    _read: PhantomData,
                 }
             }
         }
         impl<R: BufRead> Source<R> for LineSource<R> {
             fn next_token(&mut self) -> Option<&str> {
-                self.prepare();
-                self.tokens.next_token()
+                self.token = self.tokens.next().and_then(|token| token.ok());
+                self.token.as_ref().map(|token| token.as_str())
             }
             fn is_empty(&mut self) -> bool {
-                self.prepare();
-                self.tokens.is_empty()
+                self.tokens.peek().is_none()
             }
         }
     }
