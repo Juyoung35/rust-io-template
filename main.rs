@@ -1,7 +1,8 @@
 #![no_main]
 use std::io::{self, BufReader, Stdin, BufWriter, StdoutLock, Write};
 use std::sync::Mutex;
-use proconio::{StdinSource, LineSource};
+#[allow(unused_imports)]
+use proconio::{StdinSource, OnceSource, LineSource};
 static mut STDIN_SOURCE: Option<Mutex<StdinSource<BufReader<Stdin>>>> = None;
 static mut WRITER: Option<BufWriter<StdoutLock>> = None;
 
@@ -160,7 +161,7 @@ mod proconio {
             $crate::read_value!(@array @source [$source] @kind [] @rest $($kind)*)
         };
         (@array @source [$source:expr] @kind [$($kind:tt)*] @rest) => {{
-            let len = <usize as $crate::__Readable>::read($source);
+            let len = <usize as $crate::proconio::__Readable>::read($source);
             $crate::read_value!(@source [$source] @kind [[$($kind)*; len]])
         }};
         (@array @source [$source:expr] @kind [$($kind:tt)*] @rest ; $($rest:tt)*) => {
@@ -276,6 +277,29 @@ mod proconio {
             fn read<R: BufRead, S: Source<R>>(source: &mut S) -> Self::Output {
                 let token = source.next_token_unwrap();
                 token.to_string()
+            }
+        }
+        impl<T> Readable for Option<T>
+        where
+            T: Readable + FromStr,
+            <T as FromStr>::Err: Debug,
+        {
+            type Output = Self;
+            fn read<R: BufRead, S: Source<R>>(source: &mut S) -> Self::Output {
+                if let Some(token) = source.next_token() {
+                    match token.parse() {
+                        Ok(v) => Some(v),
+                        Err(e) => panic!(
+                            concat!(
+                                "failed to parse the input: `{input}`",
+                                "to the value of type `{ty}`: {err:?}."
+                            ),
+                            input = token,
+                            ty = type_name::<T>(),
+                            err = e,
+                        ),
+                    }
+                } else { None }
             }
         }
         // implmentations of Readable for any `FromStr` types including primitives.
