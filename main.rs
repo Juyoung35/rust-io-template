@@ -100,7 +100,16 @@ mod proconio {
         //     n: usize, m: usize,
         //     mut adj_list: AdjList<Usize1, usize>::new(n, m),
         // }
-        (@from [$source:expr] @mut [$($mut:tt)?] @var $var:tt @condition [$($condition:expr)?] @kind [$($kind:tt)*] @rest AdjList<$t:tt, $u:tt>::new($v:expr, $e:expr), $($rest:tt)*) => {
+        (@from [$source:expr] @mut [$($mut:tt)?] @var $var:tt @condition [$($condition:expr)?] @kind [$($kind:tt)*] @rest DirectedAdjList<$t:tt, $u:tt>::new($v:expr, $e:expr), $($rest:tt)*) => {
+            let $($mut)* $var = vec![vec![]; $v];
+            for _ in 0..$e {
+                $crate::input!(u: $u, v: $u, t: $t);
+                $var[u].push((v, t));
+                $var[v].push((u, t));
+            }
+            $crate::input!(@from [$source] @rest $($rest)*);
+        };
+        (@from [$source:expr] @mut [$($mut:tt)?] @var $var:tt @condition [$($condition:expr)?] @kind [$($kind:tt)*] @rest UnDirectedAdjList<$t:tt, $u:tt>::new($v:expr, $e:expr), $($rest:tt)*) => {
             let $($mut)* $var = vec![vec![]; $v];
             for _ in 0..$e {
                 $crate::input!(u: $u, v: $u, t: $t);
